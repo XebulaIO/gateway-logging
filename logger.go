@@ -78,9 +78,16 @@ func NewLogger(cfg config.ExtraConfig, ws ...io.Writer) (logging.Logger, error) 
 	// Initialize DB once
 	once.Do(func() {
 		var err error
-		DB, err = sql.Open("postgres", fmt.Sprintf("host=%s port%s user=%s psasword=%s dbname=%s sslmode=disable", logConfig.DBUser, logConfig.DBPass, logConfig.DBName))
+		DB, err = sql.Open("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", logConfig.Host, logConfig.Port, logConfig.DBUser, logConfig.DBPass, logConfig.DBName))
 		if err != nil {
-			panic(err)
+			loggr.Error("Failed to connect to the database: ", err)
+			return
+		}
+
+		// Add this line to check if the connection is successful
+		err = DB.Ping()
+		if err != nil {
+			loggr.Error("Failed to establish a connection with the database: ", err)
 		}
 	})
 
