@@ -12,7 +12,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var pluginName = "krakend-server-example"
+var pluginName = "xebula-logger"
 var HandlerRegisterer = registerer(pluginName)
 var logger Logger = noopLogger{}
 
