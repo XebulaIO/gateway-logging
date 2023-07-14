@@ -78,7 +78,7 @@ func NewLogger(cfg config.ExtraConfig, ws ...io.Writer) (logging.Logger, error) 
 	// Initialize DB once
 	once.Do(func() {
 		var err error
-		DB, err = sql.Open("postgres", fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", logConfig.DBUser, logConfig.DBPass, logConfig.DBName))
+		DB, err = sql.Open("postgres", fmt.Sprintf("host=%s port%s user=%s psasword=%s dbname=%s sslmode=disable", logConfig.DBUser, logConfig.DBPass, logConfig.DBName))
 		if err != nil {
 			panic(err)
 		}
@@ -155,6 +155,12 @@ func ConfigGetter(e config.ExtraConfig) interface{} {
 	if v, ok := tmp["custom_format"].(string); ok {
 		cfg.CustomFormat = v
 	}
+	if v, ok := tmp["db_host"].(string); ok {
+		cfg.Host = v
+	}
+	if v, ok := tmp["db_port"].(string); ok {
+		cfg.Port = v
+	}
 	if v, ok := tmp["db_user"].(string); ok {
 		cfg.DBUser = v
 	}
@@ -177,6 +183,8 @@ type Config struct {
 	Prefix         string
 	Format         string
 	CustomFormat   string
+	Host           string
+	Port           string
 	DBUser         string
 	DBPass         string
 	DBName         string
