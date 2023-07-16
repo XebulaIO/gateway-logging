@@ -1,0 +1,1 @@
+docker run -it -v /c/Users/cetnf/OneDrive/Masaüstü/xebula/gateway-logging:/app -w "/app" krakend/builder:2.4.1 go build -buildmode=plugin -o decoder.so .
