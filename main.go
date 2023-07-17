@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt"
-	"github.com/luraproject/lura/config"
-	"github.com/luraproject/lura/proxy"
+	"github.com/luraproject/lura/v2/config"
+	"github.com/luraproject/lura/v2/proxy"
 )
 
 func JWTDecoderMiddleware(next proxy.Proxy) proxy.Proxy {
@@ -27,7 +27,7 @@ func JWTDecoderMiddleware(next proxy.Proxy) proxy.Proxy {
 	}
 }
 
-func Register(cfg *config.EndpointConfig) proxy.Middleware {
+func ModifierRegisterer(cfg *config.EndpointConfig) proxy.Middleware {
 	return func(next ...proxy.Proxy) proxy.Proxy {
 		if len(next) > 1 {
 			panic("Too many proxies")
@@ -38,3 +38,5 @@ func Register(cfg *config.EndpointConfig) proxy.Middleware {
 		return JWTDecoderMiddleware(next[0])
 	}
 }
+
+func main() {}
