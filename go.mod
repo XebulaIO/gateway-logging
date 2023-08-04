@@ -3,12 +3,10 @@ module krakend-logger.go
 go 1.18
 
 require (
+	github.com/bshuster-repo/logrus-logstash-hook v1.1.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
-	github.com/luraproject/lura/v2 v2.2.7
+	github.com/google/uuid v1.3.0
+	github.com/sirupsen/logrus v1.8.1
 )
 
-require (
-	github.com/krakendio/flatmap v1.1.1 // indirect
-	github.com/valyala/fastrand v1.1.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
-)
+require golang.org/x/sys v0.5.0 // indirect

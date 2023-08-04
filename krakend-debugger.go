@@ -1,76 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
-	"errors"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
+	"log"
+	"net"
+	"net/http"
 	"strings"
 
+	logrustash "github.com/bshuster-repo/logrus-logstash-hook"
 	"github.com/golang-jwt/jwt"
-	"github.com/luraproject/lura/v2/proxy"
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
-func main() {}
-
-func init() {
-	fmt.Println(string(ModifierRegisterer), "loaded!!!")
-}
-
-// ModifierRegisterer is the symbol the plugin loader will be looking for. It must
-// implement the plugin.Registerer interface
-// https://github.com/luraproject/lura/blob/master/proxy/plugin/modifier.go#L71
-var ModifierRegisterer = registerer("krakend-debugger")
-
-type registerer string
-
-// RegisterModifiers is the function the plugin loader will call to register the
-// modifier(s) contained in the plugin using the function passed as argument.
-// f will register the factoryFunc under the name and mark it as a request
-// and/or response modifier.
-func (r registerer) RegisterModifiers(f func(
-	name string,
-	factoryFunc func(map[string]interface{}) func(interface{}) (interface{}, error),
-	appliesToRequest bool,
-	appliesToResponse bool,
-)) {
-	f(string(r)+"-request", r.requestDump, true, false)
-	f(string(r)+"-response", r.responseDump, false, true)
-	fmt.Println(string(r), "registered!!!")
-}
-
-// RequestWrapper is an interface for passing proxy request between the krakend pipe
-// and the loaded plugins
-type RequestWrapper interface {
-	Params() map[string]string
-	Headers() map[string][]string
-	Body() io.ReadCloser
-	Method() string
-	URL() *url.URL
-	Query() url.Values
-	Path() string
-}
-
-// ResponseWrapper is an interface for passing proxy response between the krakend pipe
-// and the loaded plugins
-type ResponseWrapper interface {
-	Data() map[string]interface{}
-	Io() io.Reader
-	IsComplete() bool
-	Metadata() proxy.ResponseWrapper
-}
-
 type JwtClaims struct {
-	Exp int64 `json:"exp"`
-	Iat int64 `json:"iat"`
-	Jti string `json:"jti"`
-	Iss string `json:"iss"`
-	Aud string `json:"aud"`
-	Sub string `json:"sub"`
-	Typ string `json:"typ"`
-	Azp string `json:"azp"`
+	Exp          int64  `json:"exp"`
+	Iat          int64  `json:"iat"`
+	Jti          string `json:"jti"`
+	Iss          string `json:"iss"`
+	Aud          string `json:"aud"`
+	Sub          string `json:"sub"`
+	Typ          string `json:"typ"`
+	Azp          string `json:"azp"`
 	SessionState string `json:"session_state"`
-	RealmAccess struct {
+	RealmAccess  struct {
 		Roles []string `json:"roles"`
 	} `json:"realm_access"`
 	ResourceAccess struct {
@@ -78,112 +36,169 @@ type JwtClaims struct {
 			Roles []string `json:"roles"`
 		} `json:"account"`
 	}
-	Scope string `json:"scope"`
-	Sid string `json:"sid"`
-	EmailVerified bool `json:"email_verified"`
-	UserType string `json:"user_type"`
-	UserID string `json:"user_id"`
-	Name string `json:"name"`
+	Scope             string `json:"scope"`
+	Sid               string `json:"sid"`
+	EmailVerified     bool   `json:"email_verified"`
+	UserType          string `json:"user_type"`
+	UserID            string `json:"user_id"`
+	Name              string `json:"name"`
 	PreferredUsername string `json:"preferred_username"`
-	GivenName string `json:"given_name"`
-	FamilyName string `json:"family_name"`
-	Email string `json:"email"`
+	GivenName         string `json:"given_name"`
+	FamilyName        string `json:"family_name"`
+	Email             string `json:"email"`
 }
 
 func (c *JwtClaims) Valid() error {
-	// Token'in süresinin dolup dolmadığını kontrol etmek için gerekli kodu burada ekleyebilirsiniz
-	// Örneğin, şu anki tarihin token'in son kullanma tarihinden önce olup olmadığını kontrol edebilirsiniz.
-	// Bu kontrolü yaparken dönecek hata değeri nil olmalıdır eğer token geçerli ise.
-	// Eğer token süresi geçmişse, bir hata döndürebilirsiniz, örneğin:
-	// return errors.New("Token süresi geçmiş")
 	return nil
 }
 
-func (r registerer) requestDump(
-	cfg map[string]interface{},
-) func(interface{}) (interface{}, error) {
-	// check the cfg. If the modifier requires some configuration,
-	// it should be under the name of the plugin.
-	// ex: if this modifier required some A and B config params
-	/*
-	   "extra_config":{
-	       "plugin/req-resp-modifier":{
-	           "name":["krakend-debugger"],
-	           "krakend-debugger":{
-	               "A":"foo",
-	               "B":42
-	           }
-	       }
-	   }
-	*/
+// ClientRegisterer is the symbol the plugin loader will try to load. It must implement the RegisterClient interface
+var (
+	// client *elasticsearch.Client
+	ClientRegisterer = registerer("xebula-logger")
+	hook             logrus.Hook
+)
 
-	// return the modifier
-	return func(input interface{}) (interface{}, error) {
-		req, ok := input.(RequestWrapper)
-		if !ok {
-			return nil, errors.New("request:something went wrong")
-		}
-		// fmt.Println("req:", req)
+func init() {
+	var err error
 
-		headerToken := req.Headers()["Authorization"]
-		if len(headerToken) == 0 {
-			return input, errors.New("request:token not found")
-		}
+	logrus.New()
 
-		t := strings.Trim(headerToken[0][7:], " ")
-
-		fmt.Println(t)
-
-		token, _ := jwt.ParseWithClaims(t, &JwtClaims{}, func(token *jwt.Token) (interface{}, error) {
-			return []byte{}, nil
-		})
-
-		claims, ok:= token.Claims.(*JwtClaims)
-
-		if !ok {
-			return input, errors.New("request: jwt cliams bind error")
-		}
-
-		fmt.Println("claims:", claims)
-
-		log := fmt.Sprintf("Url: %s, Method: %s, UserID: %s, ReqBody: %s, Agent: %s", req.URL(), req.Method(), claims.UserID, req.Body(), req.Headers()["User-Agent"])
-
-		fmt.Println(log)
-
-		return input, nil
+	conn, err := net.Dial("tcp", "logstash-svc.elk-stack:5044")
+	// conn, err := net.Dial("tcp", "host.docker.internal:5000")
+	if err != nil {
+		log.Fatalf("fluentd connection error: %v", err)
 	}
+
+	hook = logrustash.New(conn, logrustash.DefaultFormatter(logrus.Fields{"type": "xebula-logger"}))
+	logrus.AddHook(hook)
 }
 
-func (r registerer) responseDump(
-	cfg map[string]interface{},
-) func(interface{}) (interface{}, error) {
-	// check the cfg. If the modifier requires some configuration,
-	// it should be under the name of the plugin.
-	// ex: if this modifier required some A and B config params
-	/*
-	   "extra_config":{
-	       "plugin/req-resp-modifier":{
-	           "name":["krakend-debugger"],
-	           "krakend-debugger":{
-	               "A":"foo",
-	               "B":42
-	           }
-	       }
-	   }
-	*/
+type registerer string
 
-	// return the modifier
-	return func(input interface{}) (interface{}, error) {
-		resp, ok := input.(ResponseWrapper)
-		if !ok {
-			return nil, errors.New("response:something went wrong")
+var logger Logger = nil
+
+func (registerer) RegisterLogger(v interface{}) {
+	l, ok := v.(Logger)
+	if !ok {
+		return
+	}
+	logger = l
+	logger.Debug(fmt.Sprintf("[PLUGIN: %s] Logger loaded", ClientRegisterer))
+}
+
+func (r registerer) RegisterClients(f func(
+	name string,
+	handler func(context.Context, map[string]interface{}) (http.Handler, error),
+)) {
+	f(string(r), r.registerClients)
+}
+
+func (r registerer) registerClients(_ context.Context, extra map[string]interface{}) (http.Handler, error) {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+
+		rawData, err := io.ReadAll(req.Body)
+		if err != nil {
+			return
 		}
 
-		fmt.Println("data:", resp.Data())
-		fmt.Println("is complete:", resp.IsComplete())
-		fmt.Println("headers:", resp.Metadata().Headers())
-		fmt.Println("status code:", resp.Metadata().StatusCode())
+		req.Body = io.NopCloser(strings.NewReader(string(rawData)))
 
-		return input, nil
+		trackID := uuid.New().String()
+
+		requestData := map[string]interface{}{
+			"TrackID": trackID,
+			"Body":    string(rawData),
+			"Method":  req.Method,
+			"Url":     req.URL.String(),
+			"Query":   req.URL.RawQuery,
+			"Path":    req.URL.Path,
+		}
+
+		headerToken := req.Header.Get("Authorization")
+		headerToken = strings.TrimPrefix(headerToken, "Bearer ")
+
+		fmt.Println(headerToken)
+
+		if headerToken != "" && headerToken != "null" {
+			token, _ := jwt.ParseWithClaims(headerToken, &JwtClaims{}, func(token *jwt.Token) (interface{}, error) {
+				return []byte{}, nil
+			})
+
+			claims, ok := token.Claims.(*JwtClaims)
+			if ok {
+				requestData["UserID"] = claims.UserID
+			}
+		}
+
+		err = sendLogToLogstash(requestData)
+		if err != nil {
+			logger.Error(err)
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		rawData, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return
+		}
+
+		resp.Body = io.NopCloser(strings.NewReader(string(rawData)))
+
+		responseData := map[string]interface{}{
+			"TrackID": trackID,
+			"Url":     req.URL.String(),
+			"Method":  req.Method,
+			"Body":    string(rawData),
+			"Status":  resp.StatusCode,
+		}
+
+		if userID, ok := requestData["UserID"]; ok {
+			responseData["UserID"] = userID
+		}
+
+		err = sendLogToLogstash(responseData)
+		if err != nil {
+			logger.Error(err)
+		}
+
+		// Copy headers, status codes, and body from the backend to the response writer
+		for k, hs := range resp.Header {
+			for _, h := range hs {
+				w.Header().Add(k, h)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		if resp.Body == nil {
+			return
+		}
+		io.Copy(w, resp.Body)
+		resp.Body.Close()
+
+	}), nil
+}
+func sendLogToLogstash(d map[string]interface{}) error {
+	jsonData, err := json.Marshal(d)
+	if err != nil {
+		return err
 	}
+
+	logrus.Info(string(jsonData))
+
+	return nil
+}
+
+func main() {}
+
+type Logger interface {
+	Debug(v ...interface{})
+	Info(v ...interface{})
+	Warning(v ...interface{})
+	Error(v ...interface{})
+	Critical(v ...interface{})
+	Fatal(v ...interface{})
 }
