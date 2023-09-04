@@ -105,6 +105,7 @@ func (r registerer) registerClients(_ context.Context, extra map[string]interfac
 		req.Body = io.NopCloser(strings.NewReader(string(rawData)))
 
 		trackID := uuid.New().String()
+		
 
 		requestData := map[string]interface{}{
 			"TrackID": trackID,
@@ -115,13 +116,16 @@ func (r registerer) registerClients(_ context.Context, extra map[string]interfac
 			"Path":    req.URL.Path,
 		}
 
-		headerToken := req.Header.Get("Authorization")
-		headerToken = strings.TrimPrefix(headerToken, "Bearer ")
+		
+		realIP := req.Header.Get("Cf-Connecting-Ip")
+		if realIP != "" {
+			requestData["IP"] = realIP
+		}
 
-		fmt.Println(headerToken)
+		accesToken := extractTokenFromHeader(req.Cookies(), "access_token")
 
-		if headerToken != "" && headerToken != "null" {
-			token, _ := jwt.ParseWithClaims(headerToken, &JwtClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if accesToken != "" {
+			token, _ := jwt.ParseWithClaims(accesToken, &JwtClaims{}, func(token *jwt.Token) (interface{}, error) {
 				return []byte{}, nil
 			})
 
@@ -156,14 +160,12 @@ func (r registerer) registerClients(_ context.Context, extra map[string]interfac
 			"Body":    string(rawData),
 			"Status":  resp.StatusCode,
 		}
+		if realIP != "" {
+			responseData["IP"] = realIP
+		}
 
 		if userID, ok := requestData["UserID"]; ok {
 			responseData["UserID"] = userID
-		}
-
-		err = sendLogToLogstash(responseData)
-		if err != nil {
-			logger.Error(err)
 		}
 
 		// Copy headers, status codes, and body from the backend to the response writer
@@ -186,10 +188,20 @@ func sendLogToLogstash(d map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-
 	logrus.Info(string(jsonData))
-
 	return nil
+}
+
+func extractTokenFromHeader(cookie []*http.Cookie, cookieName string) string {
+	var value string
+
+	for _, c := range cookie {
+		if c.Name == cookieName {
+			return c.Value
+		}
+	}
+
+	return value
 }
 
 func main() {}
